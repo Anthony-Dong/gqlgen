@@ -1,17 +1,17 @@
 # GraphQL schema example
 #
 # https://gqlgen.com/getting-started/
-scalar Time
+scalar Time ## 业务自定义Scalar
 
-type Todo {
-    id: ID!
+type Todo {  ## 创建数据结构
+    id: ID!  ## ID! 表示为 required 类型
     text: String!
     done: Boolean!
     user: User!
-    extra: ExtraInfo
+    extra: ExtraInfo ## ExtraInfo 表示为optional类型
 }
 
-enum Gender{
+enum Gender{ ## 枚举
     UNKNOWN
     FEMALE
     MALE
@@ -25,21 +25,21 @@ type User {
     id: Int!
     name: String!
     height: Float
-    hobby: [String!]
+    hobby: [String!] ## [String!] 等价于类型: []String，[String!]表示元素内的String不允许为空, [String!]! 表示不允许是空数组
     age: Int!
     gender: Gender
-    friends(count: Int!=10): [User!]
+    friends(count: Int!=10): [User!]  ## 每个字段都可以有输入参数，具体resolver需要自己编写
 }
 
-type Query {
-    todos: [Todo!]!
-    todo(id: ID!): Todo!
+type Query {  ## Query root type
+    todos: [Todo!]! ## 输入参数为空
+    todo(id: ID!): Todo! ## 输入参数id,输出Todo
 
     users: [User!]
     user(name: String!): User
 }
 
-input InputTodo {
+input InputTodo {  ## input 类型, input类型不能和其他类型混合使用，例如InputTodo不能使用User类型，用的话需要专门定义一个 input User{}
     text: String!
     userName: String!
     done: Boolean
@@ -58,7 +58,7 @@ input InputUser {
     gender: Gender
 }
 
-type Mutation {
+type Mutation {  ## Mutation root type
     createUser(input: InputUser!): User!
     createTodo(input: InputTodo!): Todo!
 }
