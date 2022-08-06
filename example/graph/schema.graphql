@@ -1,55 +1,64 @@
 # GraphQL schema example
 #
 # https://gqlgen.com/getting-started/
+scalar Time
 
 type Todo {
-  id: ID!
-  text: String!
-  done: Boolean!
-  user: User!
-  extra: ExtraInfo
+    id: ID!
+    text: String!
+    done: Boolean!
+    user: User!
+    extra: ExtraInfo
+}
+
+enum Gender{
+    UNKNOWN
+    FEMALE
+    MALE
 }
 
 type ExtraInfo {
-  remindTime: String
+    remindTime: Time
 }
 
 type User {
-  id: ID!
-  name: String!
-  height: Float
-  hobby: [String!]
-  age: Int!
+    id: Int!
+    name: String!
+    height: Float
+    hobby: [String!]
+    age: Int!
+    gender: Gender
+    friends(count: Int!=10): [User!]
 }
 
-type Query { 
-  todos: [Todo!]!
-  todo(id: ID!): Todo!
+type Query {
+    todos: [Todo!]!
+    todo(id: ID!): Todo!
 
-  users: [User!]
-  user(name: String!): User
-  getUser(name: String!): User!
+    users: [User!]
+    user(name: String!): User
 }
 
 input InputTodo {
-  text: String!
-  userName: String!
-  done: Boolean
-  extra: InputExtraInfo
+    text: String!
+    userName: String!
+    done: Boolean
+    extra: InputExtraInfo
 }
 
 input InputExtraInfo {
-  remindTime: String!
+    remindTime: String!
 }
 
 input InputUser {
-  name: String!
-  height: Float
-  hobby: [String!]
-  age: Int!
+    name: String!
+    height: Float
+    hobby: [String!]
+    age: Int!
+    gender: Gender
 }
 
 type Mutation {
-  createUser(input: InputUser!): User!
-  createTodo(input: InputTodo!): Todo!
+    createUser(input: InputUser!): User!
+    createTodo(input: InputTodo!): Todo!
 }

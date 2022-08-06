@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"log"
+	"time"
 )
 
 func ToJsonString(v interface{}) string {
@@ -15,4 +16,8 @@ func ToJsonString(v interface{}) string {
 
 func Info(format string, v ...interface{}) {
 	log.Printf(format+"\n", v...)
+}
+
+func TimePtr(t time.Time) *time.Time {
+	return &t
 }

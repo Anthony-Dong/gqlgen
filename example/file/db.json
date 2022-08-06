@@ -1,0 +1,52 @@
+{
+    "users": [
+        {
+            "id": 1,
+            "name": "tom",
+            "height": 1.8,
+            "hobby": [
+                "coding"
+            ],
+            "age": 18,
+            "gender": "MALE"
+        },
+        {
+            "id": 2,
+            "name": "tony",
+            "height": 1.9,
+            "hobby": [
+                "basketball"
+            ],
+            "age": 22,
+            "gender": "MALE"
+        },
+        {
+            "id": 3,
+            "name": "kitty",
+            "height": 1.7,
+            "hobby": [
+                "dance"
+            ],
+            "age": 12,
+            "gender": "FEMALE"
+        }
+    ],
+    "relation": [
+        {
+            "from": 1,
+            "to": 2
+        },
+        {
+            "from": 1,
+            "to": 3
+        },
+        {
+            "from": 2,
+            "to": 3
+        },
+        {
+            "from": 3,
+            "to": 1
+        }
+    ]
+}

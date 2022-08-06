@@ -2,8 +2,15 @@
 
 package model
 
+import (
+	"fmt"
+	"io"
+	"strconv"
+	"time"
+)
+
 type ExtraInfo struct {
-	RemindTime *string `json:"remindTime"`
+	RemindTime *time.Time `json:"remindTime"`
 }
 
 type InputExtraInfo struct {
@@ -22,6 +29,7 @@ type InputUser struct {
 	Height *float64 `json:"height"`
 	Hobby  []string `json:"hobby"`
 	Age    int      `json:"age"`
+	Gender *Gender  `json:"gender"`
 }
 
 type Todo struct {
@@ -33,9 +41,54 @@ type Todo struct {
 }
 
 type User struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name"`
-	Height *float64 `json:"height"`
-	Hobby  []string `json:"hobby"`
-	Age    int      `json:"age"`
+	ID      int      `json:"id"`
+	Name    string   `json:"name"`
+	Height  *float64 `json:"height"`
+	Hobby   []string `json:"hobby"`
+	Age     int      `json:"age"`
+	Gender  *Gender  `json:"gender"`
+	Friends []*User  `json:"friends"`
+}
+
+type Gender string
+
+const (
+	GenderUnknown Gender = "UNKNOWN"
+	GenderFemale  Gender = "FEMALE"
+	GenderMale    Gender = "MALE"
+)
+
+var AllGender = []Gender{
+	GenderUnknown,
+	GenderFemale,
+	GenderMale,
+}
+
+func (e Gender) IsValid() bool {
+	switch e {
+	case GenderUnknown, GenderFemale, GenderMale:
+		return true
+	}
+	return false
+}
+
+func (e Gender) String() string {
+	return string(e)
+}
+
+func (e *Gender) UnmarshalGQL(v interface{}) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = Gender(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid Gender", str)
+	}
+	return nil
+}
+
+func (e Gender) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }

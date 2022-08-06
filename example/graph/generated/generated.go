@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/introspection"
@@ -38,6 +39,7 @@ type Config struct {
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	User() UserResolver
 }
 
 type DirectiveRoot struct {
@@ -54,11 +56,10 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		GetUser func(childComplexity int, name string) int
-		Todo    func(childComplexity int, id string) int
-		Todos   func(childComplexity int) int
-		User    func(childComplexity int, name string) int
-		Users   func(childComplexity int) int
+		Todo  func(childComplexity int, id string) int
+		Todos func(childComplexity int) int
+		User  func(childComplexity int, name string) int
+		Users func(childComplexity int) int
 	}
 
 	Todo struct {
@@ -70,11 +71,13 @@ type ComplexityRoot struct {
 	}
 
 	User struct {
-		Age    func(childComplexity int) int
-		Height func(childComplexity int) int
-		Hobby  func(childComplexity int) int
-		ID     func(childComplexity int) int
-		Name   func(childComplexity int) int
+		Age     func(childComplexity int) int
+		Friends func(childComplexity int, count int) int
+		Gender  func(childComplexity int) int
+		Height  func(childComplexity int) int
+		Hobby   func(childComplexity int) int
+		ID      func(childComplexity int) int
+		Name    func(childComplexity int) int
 	}
 }
 
@@ -87,7 +90,9 @@ type QueryResolver interface {
 	Todo(ctx context.Context, id string) (*model.Todo, error)
 	Users(ctx context.Context) ([]*model.User, error)
 	User(ctx context.Context, name string) (*model.User, error)
-	GetUser(ctx context.Context, name string) (*model.User, error)
+}
+type UserResolver interface {
+	Friends(ctx context.Context, obj *model.User, count int) ([]*model.User, error)
 }
 
 type executableSchema struct {
@@ -135,18 +140,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.CreateUser(childComplexity, args["input"].(model.InputUser)), true
-
-	case "Query.getUser":
-		if e.complexity.Query.GetUser == nil {
-			break
-		}
-
-		args, err := ec.field_Query_getUser_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.GetUser(childComplexity, args["name"].(string)), true
 
 	case "Query.todo":
 		if e.complexity.Query.Todo == nil {
@@ -227,6 +220,25 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.User.Age(childComplexity), true
+
+	case "User.friends":
+		if e.complexity.User.Friends == nil {
+			break
+		}
+
+		args, err := ec.field_User_friends_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.User.Friends(childComplexity, args["count"].(int)), true
+
+	case "User.gender":
+		if e.complexity.User.Gender == nil {
+			break
+		}
+
+		return e.complexity.User.Gender(childComplexity), true
 
 	case "User.height":
 		if e.complexity.User.Height == nil {
@@ -330,58 +342,68 @@ var sources = []*ast.Source{
 	{Name: "../schema.graphql", Input: `# GraphQL schema example
 #
 # https://gqlgen.com/getting-started/
+scalar Time
 
 type Todo {
-  id: ID!
-  text: String!
-  done: Boolean!
-  user: User!
-  extra: ExtraInfo
+    id: ID!
+    text: String!
+    done: Boolean!
+    user: User!
+    extra: ExtraInfo
+}
+
+enum Gender{
+    UNKNOWN
+    FEMALE
+    MALE
 }
 
 type ExtraInfo {
-  remindTime: String
+    remindTime: Time
 }
 
 type User {
-  id: ID!
-  name: String!
-  height: Float
-  hobby: [String!]
-  age: Int!
+    id: Int!
+    name: String!
+    height: Float
+    hobby: [String!]
+    age: Int!
+    gender: Gender
+    friends(count: Int!=10): [User!]
 }
 
-type Query { 
-  todos: [Todo!]!
-  todo(id: ID!): Todo!
+type Query {
+    todos: [Todo!]!
+    todo(id: ID!): Todo!
 
-  users: [User!]
-  user(name: String!): User
-  getUser(name: String!): User!
+    users: [User!]
+    user(name: String!): User
 }
 
 input InputTodo {
-  text: String!
-  userName: String!
-  done: Boolean
-  extra: InputExtraInfo
+    text: String!
+    userName: String!
+    done: Boolean
+    extra: InputExtraInfo
 }
 
 input InputExtraInfo {
-  remindTime: String!
+    remindTime: String!
 }
 
 input InputUser {
-  name: String!
-  height: Float
-  hobby: [String!]
-  age: Int!
+    name: String!
+    height: Float
+    hobby: [String!]
+    age: Int!
+    gender: Gender
 }
 
 type Mutation {
-  createUser(input: InputUser!): User!
-  createTodo(input: InputTodo!): Todo!
-}`, BuiltIn: false},
+    createUser(input: InputUser!): User!
+    createTodo(input: InputTodo!): Todo!
+}
+`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
@@ -434,21 +456,6 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_getUser_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["name"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["name"] = arg0
-	return args, nil
-}
-
 func (ec *executionContext) field_Query_todo_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -476,6 +483,21 @@ func (ec *executionContext) field_Query_user_args(ctx context.Context, rawArgs m
 		}
 	}
 	args["name"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_User_friends_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int
+	if tmp, ok := rawArgs["count"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("count"))
+		arg0, err = ec.unmarshalNInt2int(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["count"] = arg0
 	return args, nil
 }
 
@@ -540,9 +562,9 @@ func (ec *executionContext) _ExtraInfo_remindTime(ctx context.Context, field gra
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*string)
+	res := resTmp.(*time.Time)
 	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+	return ec.marshalOTime2ᚖtimeᚐTime(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ExtraInfo_remindTime(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -552,7 +574,7 @@ func (ec *executionContext) fieldContext_ExtraInfo_remindTime(ctx context.Contex
 		IsMethod:   false,
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
+			return nil, errors.New("field of type Time does not have child fields")
 		},
 	}
 	return fc, nil
@@ -607,6 +629,10 @@ func (ec *executionContext) fieldContext_Mutation_createUser(ctx context.Context
 				return ec.fieldContext_User_hobby(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "gender":
+				return ec.fieldContext_User_gender(ctx, field)
+			case "friends":
+				return ec.fieldContext_User_friends(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -861,6 +887,10 @@ func (ec *executionContext) fieldContext_Query_users(ctx context.Context, field 
 				return ec.fieldContext_User_hobby(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "gender":
+				return ec.fieldContext_User_gender(ctx, field)
+			case "friends":
+				return ec.fieldContext_User_friends(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -914,6 +944,10 @@ func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field g
 				return ec.fieldContext_User_hobby(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "gender":
+				return ec.fieldContext_User_gender(ctx, field)
+			case "friends":
+				return ec.fieldContext_User_friends(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -926,73 +960,6 @@ func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field g
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_user_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Query_getUser(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Query_getUser(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().GetUser(rctx, fc.Args["name"].(string))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(*model.User)
-	fc.Result = res
-	return ec.marshalNUser2ᚖexampleᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Query_getUser(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "id":
-				return ec.fieldContext_User_id(ctx, field)
-			case "name":
-				return ec.fieldContext_User_name(ctx, field)
-			case "height":
-				return ec.fieldContext_User_height(ctx, field)
-			case "hobby":
-				return ec.fieldContext_User_hobby(ctx, field)
-			case "age":
-				return ec.fieldContext_User_age(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_getUser_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return
 	}
@@ -1309,6 +1276,10 @@ func (ec *executionContext) fieldContext_Todo_user(ctx context.Context, field gr
 				return ec.fieldContext_User_hobby(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "gender":
+				return ec.fieldContext_User_gender(ctx, field)
+			case "friends":
+				return ec.fieldContext_User_friends(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1387,9 +1358,9 @@ func (ec *executionContext) _User_id(ctx context.Context, field graphql.Collecte
 		}
 		return graphql.Null
 	}
-	res := resTmp.(string)
+	res := resTmp.(int)
 	fc.Result = res
-	return ec.marshalNID2string(ctx, field.Selections, res)
+	return ec.marshalNInt2int(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_User_id(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1399,7 +1370,7 @@ func (ec *executionContext) fieldContext_User_id(ctx context.Context, field grap
 		IsMethod:   false,
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type ID does not have child fields")
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -1571,6 +1542,115 @@ func (ec *executionContext) fieldContext_User_age(ctx context.Context, field gra
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Int does not have child fields")
 		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_gender(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_User_gender(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Gender, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Gender)
+	fc.Result = res
+	return ec.marshalOGender2ᚖexampleᚋgraphᚋmodelᚐGender(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_User_gender(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Gender does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_friends(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_User_friends(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.User().Friends(rctx, obj, fc.Args["count"].(int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*model.User)
+	fc.Result = res
+	return ec.marshalOUser2ᚕᚖexampleᚋgraphᚋmodelᚐUserᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_User_friends(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "name":
+				return ec.fieldContext_User_name(ctx, field)
+			case "height":
+				return ec.fieldContext_User_height(ctx, field)
+			case "hobby":
+				return ec.fieldContext_User_hobby(ctx, field)
+			case "age":
+				return ec.fieldContext_User_age(ctx, field)
+			case "gender":
+				return ec.fieldContext_User_gender(ctx, field)
+			case "friends":
+				return ec.fieldContext_User_friends(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_User_friends_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
 	}
 	return fc, nil
 }
@@ -3435,7 +3515,7 @@ func (ec *executionContext) unmarshalInputInputUser(ctx context.Context, obj int
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"name", "height", "hobby", "age"}
+	fieldsInOrder := [...]string{"name", "height", "hobby", "age", "gender"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -3471,6 +3551,14 @@ func (ec *executionContext) unmarshalInputInputUser(ctx context.Context, obj int
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("age"))
 			it.Age, err = ec.unmarshalNInt2int(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "gender":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("gender"))
+			it.Gender, err = ec.unmarshalOGender2ᚖexampleᚋgraphᚋmodelᚐGender(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -3666,29 +3754,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Concurrently(i, func() graphql.Marshaler {
 				return rrm(innerCtx)
 			})
-		case "getUser":
-			field := field
-
-			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_getUser(ctx, field)
-				if res == graphql.Null {
-					atomic.AddUint32(&invalids, 1)
-				}
-				return res
-			}
-
-			rrm := func(ctx context.Context) graphql.Marshaler {
-				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
-			}
-
-			out.Concurrently(i, func() graphql.Marshaler {
-				return rrm(innerCtx)
-			})
 		case "__type":
 
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
@@ -3780,14 +3845,14 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			out.Values[i] = ec._User_id(ctx, field, obj)
 
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "name":
 
 			out.Values[i] = ec._User_name(ctx, field, obj)
 
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "height":
 
@@ -3802,8 +3867,29 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			out.Values[i] = ec._User_age(ctx, field, obj)
 
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
+		case "gender":
+
+			out.Values[i] = ec._User_gender(ctx, field, obj)
+
+		case "friends":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_friends(ctx, field, obj)
+				return res
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return innerFunc(ctx)
+
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -4577,6 +4663,22 @@ func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel as
 	return graphql.WrapContextMarshaler(ctx, res)
 }
 
+func (ec *executionContext) unmarshalOGender2ᚖexampleᚋgraphᚋmodelᚐGender(ctx context.Context, v interface{}) (*model.Gender, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.Gender)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOGender2ᚖexampleᚋgraphᚋmodelᚐGender(ctx context.Context, sel ast.SelectionSet, v *model.Gender) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
 func (ec *executionContext) unmarshalOInputExtraInfo2ᚖexampleᚋgraphᚋmodelᚐInputExtraInfo(ctx context.Context, v interface{}) (*model.InputExtraInfo, error) {
 	if v == nil {
 		return nil, nil
@@ -4636,6 +4738,22 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 		return graphql.Null
 	}
 	res := graphql.MarshalString(*v)
+	return res
+}
+
+func (ec *executionContext) unmarshalOTime2ᚖtimeᚐTime(ctx context.Context, v interface{}) (*time.Time, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalTime(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOTime2ᚖtimeᚐTime(ctx context.Context, sel ast.SelectionSet, v *time.Time) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	res := graphql.MarshalTime(*v)
 	return res
 }
 
